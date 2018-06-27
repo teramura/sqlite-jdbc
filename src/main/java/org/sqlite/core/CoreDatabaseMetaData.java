@@ -16,18 +16,17 @@
 
 package org.sqlite.core;
 
+import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.sqlite.SQLiteConnection;
 
-public abstract class CoreDatabaseMetaData
+public abstract class CoreDatabaseMetaData implements DatabaseMetaData
 {
-    protected SQLiteConnection              conn;
+    protected SQLiteConnection conn;
     protected PreparedStatement
             getTables             = null,   getTableTypes        = null,
             getTypeInfo           = null,   getCatalogs          = null,
@@ -43,11 +42,6 @@ public abstract class CoreDatabaseMetaData
      * Used to save generating a new statement every call.
      */
     protected PreparedStatement getGeneratedKeys = null;
-
-    /**
-     * Reference count.
-     */
-    public int refCount = 1;
 
     /**
      * Constructor that applies the Connection object.
@@ -72,7 +66,7 @@ public abstract class CoreDatabaseMetaData
      * @throws SQLException
      */
     public synchronized void close() throws SQLException {
-        if (conn == null || refCount > 0) {
+        if (conn == null) {
             return;
         }
 
@@ -205,93 +199,6 @@ public abstract class CoreDatabaseMetaData
      protected final static Pattern PK_NAMED_PATTERN =
          Pattern.compile(".*\\sCONSTRAINT\\s+(.*?)\\s+PRIMARY\\s+KEY\\s+\\((.*?)\\).*",
              Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
-
-    /**
-     * Parses the sqlite_master table for a table's primary key
-     */
-    public class PrimaryKeyFinder {
-        /** The table name. */
-        String table;
-
-        /** The primary key name. */
-        String pkName = null;
-
-        /** The column(s) for the primary key. */
-        String pkColumns[] = null;
-
-        /**
-         * Constructor.
-         * @param table The table for which to get find a primary key.
-         * @throws SQLException
-         */
-        public PrimaryKeyFinder(String table) throws SQLException {
-            this.table = table;
-
-            if (table == null || table.trim().length() == 0) {
-                throw new SQLException("Invalid table name: '" + this.table + "'");
-            }
-
-            Statement stat = null;
-            ResultSet rs = null;
-
-            try {
-                stat = conn.createStatement();
-                // read create SQL script for table
-                rs = stat.executeQuery("select sql from sqlite_master where" +
-                    " lower(name) = lower('" + escape(table) + "') and type = 'table'");
-
-                if (!rs.next())
-                    throw new SQLException("Table not found: '" + table + "'");
-
-                Matcher matcher = PK_NAMED_PATTERN.matcher(rs.getString(1));
-                if (matcher.find()){
-                    pkName = '\'' + escape(matcher.group(1).toLowerCase()) + '\'';
-                    pkColumns = matcher.group(2).split(",");
-                }
-                else {
-                    matcher = PK_UNNAMED_PATTERN.matcher(rs.getString(1));
-                    if (matcher.find()){
-                        pkColumns = matcher.group(1).split(",");
-                    }
-                }
-
-                if (pkColumns == null) {
-                    rs = stat.executeQuery("pragma table_info('" + escape(table) + "');");
-                    while(rs.next()) {
-                        if (rs.getBoolean(6))
-                            pkColumns = new String[]{rs.getString(2)};
-                    }
-                }
-
-                if (pkColumns != null)
-                    for (int i = 0; i < pkColumns.length; i++) {
-                        pkColumns[i] = pkColumns[i].toLowerCase().trim();
-                    }
-            }
-            finally {
-                try {
-                    if (rs != null) rs.close();
-                } catch (Exception e) {}
-                try {
-                    if (stat != null) stat.close();
-                } catch (Exception e) {}
-            }
-        }
-
-        /**
-         * @return The primary key name if any.
-         */
-        public String getName() {
-            return pkName;
-        }
-
-        /**
-         * @return Array of primary key column(s) if any.
-         */
-        public String[] getColumns() {
-            return pkColumns;
-        }
-    }
 
     /**
      * @see java.lang.Object#finalize()

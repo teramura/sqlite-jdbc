@@ -395,25 +395,44 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved)
 
     dbclass = (*env)->FindClass(env, "org/sqlite/core/NativeDB");
     if (!dbclass) return JNI_ERR;
-    dbclass = (*env)->NewGlobalRef(env, dbclass);
+    dbclass = (*env)->NewWeakGlobalRef(env, dbclass);
 
     fclass = (*env)->FindClass(env, "org/sqlite/Function");
     if (!fclass) return JNI_ERR;
-    fclass = (*env)->NewGlobalRef(env, fclass);
+    fclass = (*env)->NewWeakGlobalRef(env, fclass);
 
     aclass = (*env)->FindClass(env, "org/sqlite/Function$Aggregate");
     if (!aclass) return JNI_ERR;
-    aclass = (*env)->NewGlobalRef(env, aclass);
+    aclass = (*env)->NewWeakGlobalRef(env, aclass);
 
     pclass = (*env)->FindClass(env, "org/sqlite/core/DB$ProgressObserver");
     if(!pclass) return JNI_ERR;
-    pclass = (*env)->NewGlobalRef(env, pclass);
+    pclass = (*env)->NewWeakGlobalRef(env, pclass);
 
     phandleclass = (*env)->FindClass(env, "org/sqlite/ProgressHandler");
     if(!phandleclass) return JNI_ERR;
-    phandleclass = (*env)->NewGlobalRef(env, phandleclass);
+    phandleclass = (*env)->NewWeakGlobalRef(env, phandleclass);
 
     return JNI_VERSION_1_2;
+}
+
+// FINALIZATION
+
+JNIEXPORT void JNICALL JNI_OnUnload(JavaVM *vm, void *reserved) {
+    JNIEnv* env = 0;
+
+    if (JNI_OK != (*vm)->GetEnv(vm, (void **)&env, JNI_VERSION_1_2))
+        return;
+
+    if (dbclass) (*env)->DeleteWeakGlobalRef(env, dbclass);
+
+    if (fclass) (*env)->DeleteWeakGlobalRef(env, fclass);
+
+    if (aclass) (*env)->DeleteWeakGlobalRef(env, aclass);
+
+    if (pclass) (*env)->DeleteWeakGlobalRef(env, pclass);
+
+    if (phandleclass) (*env)->DeleteWeakGlobalRef(env, phandleclass);
 }
 
 
@@ -1160,7 +1179,7 @@ JNIEXPORT jint JNICALL Java_org_sqlite_core_NativeDB_value_1type(
 
 
 JNIEXPORT jint JNICALL Java_org_sqlite_core_NativeDB_create_1function_1utf8(
-        JNIEnv *env, jobject this, jbyteArray name, jobject func)
+        JNIEnv *env, jobject this, jbyteArray name, jobject func, jint flags)
 {
     jint ret = 0;
     char *name_bytes;
@@ -1187,9 +1206,9 @@ JNIEXPORT jint JNICALL Java_org_sqlite_core_NativeDB_create_1function_1utf8(
 
     ret = sqlite3_create_function(
             gethandle(env, this),
-            name_bytes,    // function name
-            -1,            // number of args
-            SQLITE_UTF16,  // preferred chars
+            name_bytes,            // function name
+            -1,                    // number of args
+            SQLITE_UTF16 | flags,  // preferred chars
             udf,
             isAgg ? 0 :&xFunc,
             isAgg ? &xStep : 0,

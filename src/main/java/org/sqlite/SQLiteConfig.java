@@ -24,6 +24,8 @@
 //--------------------------------------
 package org.sqlite;
 
+import org.sqlite.date.FastDateFormat;
+
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.DriverPropertyInfo;
@@ -31,6 +33,8 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.HashSet;
 import java.util.Properties;
+import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * SQLite Configuration
@@ -42,17 +46,15 @@ import java.util.Properties;
  */
 public class SQLiteConfig
 {
-    private final Properties pragmaTable;
-    private int openModeFlag = 0x00;
-    private TransactionMode transactionMode;
-    public final int busyTimeout;
-
     /* Date storage class*/
     public final static String DEFAULT_DATE_STRING_FORMAT = "yyyy-MM-dd HH:mm:ss.SSS";
-    public DateClass dateClass;
-    public DatePrecision datePrecision;
-    public long dateMultiplier;
-    public String dateStringFormat;
+
+    private final Properties pragmaTable;
+    private int openModeFlag = 0x00;
+
+    private final int busyTimeout;
+
+    private final SQLiteConnectionConfig defaultConnectionConfig;
 
     /**
      * Default constructor.
@@ -78,18 +80,18 @@ public class SQLiteConfig
             setOpenMode(SQLiteOpenMode.READWRITE);
             setOpenMode(SQLiteOpenMode.CREATE);
         }
-        openMode = pragmaTable.getProperty(Pragma.SHARED_CACHE.pragmaName);
-        setOpenMode(SQLiteOpenMode.OPEN_URI); // Enable URI filenames
+        // Shared Cache
+        setSharedCache(Boolean.parseBoolean(pragmaTable.getProperty(Pragma.SHARED_CACHE.pragmaName, "false")));
+        // Enable URI filenames
+        setOpenMode(SQLiteOpenMode.OPEN_URI);
 
-        transactionMode = TransactionMode.getMode(
-                pragmaTable.getProperty(Pragma.TRANSACTION_MODE.pragmaName, TransactionMode.DEFFERED.name()));
+        this.busyTimeout = Integer.parseInt(pragmaTable.getProperty(Pragma.BUSY_TIMEOUT.pragmaName, "3000"));
+        this.defaultConnectionConfig = SQLiteConnectionConfig.fromPragmaTable(pragmaTable);
+    }
 
-        dateClass = DateClass.getDateClass(pragmaTable.getProperty(Pragma.DATE_CLASS.pragmaName, DateClass.INTEGER.name()));
-        datePrecision = DatePrecision.getPrecision(pragmaTable.getProperty(Pragma.DATE_PRECISION.pragmaName, DatePrecision.MILLISECONDS.name()));
-        dateMultiplier = (datePrecision == DatePrecision.MILLISECONDS) ? 1L : 1000L;
-        dateStringFormat = pragmaTable.getProperty(Pragma.DATE_STRING_FORMAT.pragmaName, DEFAULT_DATE_STRING_FORMAT);
-
-        busyTimeout = Integer.parseInt(pragmaTable.getProperty(Pragma.BUSY_TIMEOUT.pragmaName, "3000"));
+    public SQLiteConnectionConfig newConnectionConfig()
+    {
+         return defaultConnectionConfig.copyConfig();
     }
 
     /**
@@ -119,9 +121,28 @@ public class SQLiteConfig
         pragmaParams.remove(Pragma.DATE_PRECISION.pragmaName);
         pragmaParams.remove(Pragma.DATE_CLASS.pragmaName);
         pragmaParams.remove(Pragma.DATE_STRING_FORMAT.pragmaName);
+        pragmaParams.remove(Pragma.PASSWORD.pragmaName);
+        pragmaParams.remove(Pragma.HEXKEY_MODE.pragmaName);
 
         Statement stat = conn.createStatement();
         try {
+            if(pragmaTable.containsKey(Pragma.PASSWORD.pragmaName)) {
+                String password = pragmaTable.getProperty(Pragma.PASSWORD.pragmaName);
+                if(password != null && !password.isEmpty()) {
+                    String hexkeyMode = pragmaTable.getProperty(Pragma.HEXKEY_MODE.pragmaName);
+                    String passwordPragma; 
+                    if(HexKeyMode.SSE.name().equalsIgnoreCase(hexkeyMode)) {
+                        passwordPragma = "pragma hexkey = '%s'";
+                    }else if(HexKeyMode.SQLCIPHER.name().equalsIgnoreCase(hexkeyMode)) {
+                        passwordPragma = "pragma key = \"x'%s'\"";
+                    } else {
+                        passwordPragma = "pragma key = '%s'";
+                    }
+                    stat.execute(String.format(passwordPragma, password.replace("'", "''")));
+                    stat.execute("select 1 from sqlite_master");
+                }
+            }
+            
             for (Object each : pragmaTable.keySet()) {
                 String key = each.toString();
                 if (!pragmaParams.contains(key)) {
@@ -209,10 +230,10 @@ public class SQLiteConfig
      */
     public Properties toProperties() {
         pragmaTable.setProperty(Pragma.OPEN_MODE.pragmaName, Integer.toString(openModeFlag));
-        pragmaTable.setProperty(Pragma.TRANSACTION_MODE.pragmaName, transactionMode.getValue());
-        pragmaTable.setProperty(Pragma.DATE_CLASS.pragmaName, dateClass.getValue());
-        pragmaTable.setProperty(Pragma.DATE_PRECISION.pragmaName, datePrecision.getValue());
-        pragmaTable.setProperty(Pragma.DATE_STRING_FORMAT.pragmaName, dateStringFormat);
+        pragmaTable.setProperty(Pragma.TRANSACTION_MODE.pragmaName, defaultConnectionConfig.getTransactionMode().getValue());
+        pragmaTable.setProperty(Pragma.DATE_CLASS.pragmaName, defaultConnectionConfig.getDateClass().getValue());
+        pragmaTable.setProperty(Pragma.DATE_PRECISION.pragmaName, defaultConnectionConfig.getDatePrecision().getValue());
+        pragmaTable.setProperty(Pragma.DATE_STRING_FORMAT.pragmaName, defaultConnectionConfig.getDateStringFormat());
 
         return pragmaTable;
     }
@@ -237,6 +258,14 @@ public class SQLiteConfig
 
     private static final String[] OnOff = new String[] { "true", "false" };
 
+    final static Set<String> pragmaSet = new TreeSet<String>();
+
+    static {
+        for (SQLiteConfig.Pragma pragma : SQLiteConfig.Pragma.values()) {
+            pragmaSet.add(pragma.pragmaName);
+        }
+    }
+
     public static enum Pragma {
 
         // Parameters requiring SQLite3 API invocation
@@ -246,6 +275,7 @@ public class SQLiteConfig
 
         // Pragmas that can be set after opening the database
         CACHE_SIZE("cache_size"),
+        MMAP_SIZE("mmap_size"),
         CASE_SENSITIVE_LIKE("case_sensitive_like", OnOff),
         COUNT_CHANGES("count_changes", OnOff),
         DEFAULT_CACHE_SIZE("default_cache_size"),
@@ -264,18 +294,22 @@ public class SQLiteConfig
         READ_UNCOMMITED("read_uncommited", OnOff),
         RECURSIVE_TRIGGERS("recursive_triggers", OnOff),
         REVERSE_UNORDERED_SELECTS("reverse_unordered_selects", OnOff),
+        SECURE_DELETE("secure_delete", new String[] { "true", "false", "fast" }),
         SHORT_COLUMN_NAMES("short_column_names", OnOff),
         SYNCHRONOUS("synchronous", toStringArray(SynchronousMode.values())),
         TEMP_STORE("temp_store", toStringArray(TempStore.values())),
         TEMP_STORE_DIRECTORY("temp_store_directory"),
         USER_VERSION("user_version"),
-
+        APPLICATION_ID("application_id"),
+        
         // Others
         TRANSACTION_MODE("transaction_mode", toStringArray(TransactionMode.values())),
         DATE_PRECISION("date_precision", "\"seconds\": Read and store integer dates as seconds from the Unix Epoch (SQLite standard).\n\"milliseconds\": (DEFAULT) Read and store integer dates as milliseconds from the Unix Epoch (Java standard).", toStringArray(DatePrecision.values())),
         DATE_CLASS("date_class", "\"integer\": (Default) store dates as number of seconds or milliseconds from the Unix Epoch\n\"text\": store dates as a string of text\n\"real\": store dates as Julian Dates", toStringArray(DateClass.values())),
         DATE_STRING_FORMAT("date_string_format", "Format to store and retrieve dates stored as text. Defaults to \"yyyy-MM-dd HH:mm:ss.SSS\"", null),
-        BUSY_TIMEOUT("busy_timeout", null);
+        BUSY_TIMEOUT("busy_timeout", null),
+        HEXKEY_MODE("hexkey_mode", toStringArray(HexKeyMode.values())),
+        PASSWORD("password", null);
 
         public final String   pragmaName;
         public final String[] choices;
@@ -674,13 +708,33 @@ public class SQLiteConfig
     }
 
     /**
+     * Changes the setting of the "hexkey" flag.
+     * @param mode One of {@link HexKeyMode}:<ul>
+     * <li> NONE - SQLite uses a string based password</li>
+     * <li> SSE - the SQLite database engine will use pragma hexkey = '' to set the password</li>
+     * <li> SQLCIPHER - the SQLite database engine calls pragma key = "x''" to set the password</li></ul>
+     */
+    public void setHexKeyMode(HexKeyMode mode) {
+        setPragma(Pragma.HEXKEY_MODE, mode.name());
+    }
+
+    public static enum HexKeyMode implements PragmaValue {
+        NONE, SSE, SQLCIPHER;
+
+        public String getValue() {
+            return name();
+        }
+
+    }
+
+    /**
      * Changes the setting of the "temp_store" parameter.
      * @param storeType One of {@link TempStore}:<ul>
      * <li> DEFAULT - the compile-time C preprocessor macro SQLITE_TEMP_STORE
      * is used to determine where temporary tables and indices are stored</li>
-     * <li>FILE - temporary tables and indices are kept in as if they were pure
+     * <li>FILE - temporary tables and indices are stored in a file.</li></ul>
+     * <li>MEMORY - temporary tables and indices are kept in as if they were pure
      * in-memory databases memory</li>
-     * <li>MEMORY - temporary tables and indices are stored in a file.</li></ul>
      * @see <a
      *      href="http://www.sqlite.org/pragma.html#pragma_temp_store">www.sqlite.org/pragma.html#pragma_temp_store</a>
      */
@@ -708,6 +762,19 @@ public class SQLiteConfig
     public void setUserVersion(int version) {
         set(Pragma.USER_VERSION, version);
     }
+    
+     /**
+     * Set the value of the application-id. The application-id is not used
+     * internally by SQLite. Applications that use SQLite as their application file-format 
+     * should set the Application ID integer to a unique integer so that utilities such as file(1) 
+     * can determine the specific file type. The
+     * value is stored in the database header at offset 68.
+     * @param id A big-endian 32-bit unsigned integer.
+     * @see <a href="http://sqlite.org/pragma.html#pragma_application_id">www.sqlite.org/pragma.html#pragma_application_id</a>
+     */
+    public void setApplicationId(int id){
+        set(Pragma.APPLICATION_ID, id);
+    }
 
     public static enum TransactionMode implements PragmaValue {
         DEFFERED, IMMEDIATE, EXCLUSIVE;
@@ -727,7 +794,7 @@ public class SQLiteConfig
      * @see <a href="http://www.sqlite.org/lang_transaction.html">http://www.sqlite.org/lang_transaction.html</a>
      */
     public void setTransactionMode(TransactionMode transactionMode) {
-        this.transactionMode = transactionMode;
+        this.defaultConnectionConfig.setTransactionMode(transactionMode);
     }
 
     /**
@@ -743,7 +810,7 @@ public class SQLiteConfig
      * @return The transaction mode.
      */
     public TransactionMode getTransactionMode() {
-        return transactionMode;
+        return this.defaultConnectionConfig.getTransactionMode();
     }
 
     public static enum DatePrecision implements PragmaValue {
@@ -763,7 +830,7 @@ public class SQLiteConfig
      * @throws SQLException 
      */
     public void setDatePrecision(String datePrecision) throws SQLException {
-        this.datePrecision = DatePrecision.getPrecision(datePrecision);
+        this.defaultConnectionConfig.setDatePrecision(DatePrecision.getPrecision(datePrecision));
     }
 
     public static enum DateClass implements PragmaValue {
@@ -782,20 +849,25 @@ public class SQLiteConfig
      * @param dateClass One of INTEGER, TEXT or REAL
      */
     public void setDateClass(String dateClass) {
-        this.dateClass = DateClass.getDateClass(dateClass);
+        this.defaultConnectionConfig.setDateClass(DateClass.getDateClass(dateClass));
     }
 
     /**
      * @param dateStringFormat Format of date string
      */
     public void setDateStringFormat(String dateStringFormat) {
-        this.dateStringFormat = dateStringFormat;
+
+        this.defaultConnectionConfig.setDateStringFormat(dateStringFormat);
     }
 
     /**
      * @param milliseconds Connect to DB timeout in milliseconds
      */
-    public void setBusyTimeout(String milliseconds) {
-        setPragma(Pragma.BUSY_TIMEOUT, milliseconds);
+    public void setBusyTimeout(int milliseconds) {
+        setPragma(Pragma.BUSY_TIMEOUT, Integer.toString(milliseconds));
+    }
+
+    public int getBusyTimeout() {
+        return busyTimeout;
     }
 }

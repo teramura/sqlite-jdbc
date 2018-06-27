@@ -24,6 +24,7 @@ CCFLAGS:= -I$(SQLITE_OUT) -I$(SQLITE_SOURCE) $(CCFLAGS)
 
 $(SQLITE_ARCHIVE):
 	@mkdir -p $(@D)
+	curl -L --max-redirs 0 -f -o$@ https://www.sqlite.org/2018/$(SQLITE_AMAL_PREFIX).zip || \
 	curl -L --max-redirs 0 -f -o$@ https://www.sqlite.org/2017/$(SQLITE_AMAL_PREFIX).zip || \
 	curl -L --max-redirs 0 -f -o$@ https://www.sqlite.org/2016/$(SQLITE_AMAL_PREFIX).zip || \
 	curl -L --max-redirs 0 -f -o$@ https://www.sqlite.org/2015/$(SQLITE_AMAL_PREFIX).zip || \
@@ -78,6 +79,7 @@ $(SQLITE_OUT)/sqlite3.o : $(SQLITE_UNPACKED)
 	    -DSQLITE_DEFAULT_MEMSTATUS=0 \
 	    -DSQLITE_DEFAULT_FILE_PERMISSIONS=0666 \
 	    -DSQLITE_MAX_VARIABLE_NUMBER=250000 \
+	    -DSQLITE_MAX_MMAP_SIZE=1099511627776 \
 	    $(SQLITE_FLAGS) \
 	    $(SQLITE_OUT)/sqlite3.c
 
@@ -95,7 +97,8 @@ NATIVE_TARGET_DIR:=$(TARGET)/classes/org/sqlite/native/$(OS_NAME)/$(OS_ARCH)
 NATIVE_DLL:=$(NATIVE_DIR)/$(LIBNAME)
 
 # For cross-compilation, install docker. See also https://github.com/dockcross/dockcross
-native-all: native win32 win64 mac64 linux32 linux64 linux-arm linux-armv6 linux-armv7 linux-android-arm linux-ppc64
+# Disabled linux-armv6 build because of this issue; https://github.com/dockcross/dockcross/issues/190
+native-all: native win32 win64 mac64 linux32 linux64 linux-arm linux-armv7 linux-arm64 linux-android-arm linux-ppc64
 
 native: $(SQLITE_UNPACKED) $(NATIVE_DLL)
 
@@ -130,6 +133,9 @@ linux-armv6: $(SQLITE_UNPACKED) jni-header
 
 linux-armv7: $(SQLITE_UNPACKED) jni-header
 	./docker/dockcross-armv7 -a $(DOCKER_RUN_OPTS) bash -c 'make clean-native native CROSS_PREFIX=arm-linux-gnueabihf- OS_NAME=Linux OS_ARCH=armv7'
+
+linux-arm64: $(SQLITE_UNPACKED) jni-header
+	./docker/dockcross-arm64 -a $(DOCKER_RUN_OPTS) bash -c 'make clean-native native CROSS_PREFIX=/usr/bin/aarch64-unknown-linux-gnueabi/bin/aarch64-unknown-linux-gnueabi- OS_NAME=Linux OS_ARCH=aarch64'
 
 linux-android-arm: $(SQLITE_UNPACKED) jni-header
 	./docker/dockcross-android-arm -a $(DOCKER_RUN_OPTS) bash -c 'make clean-native native CROSS_PREFIX=/usr/arm-linux-androideabi/bin/arm-linux-androideabi- OS_NAME=Linux OS_ARCH=android-arm'

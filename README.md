@@ -1,5 +1,6 @@
-SQLite JDBC Driver [![Build Status](https://travis-ci.org/xerial/sqlite-jdbc.svg?branch=master)](https://travis-ci.org/xerial/sqlite-jdbc) [![Reference Status](https://www.versioneye.com/java/org.xerial:sqlite-jdbc/reference_badge.svg?style=flat-square)](https://www.versioneye.com/java/org.xerial:sqlite-jdbc/references)
+SQLite JDBC Driver [![Build Status](https://travis-ci.org/xerial/sqlite-jdbc.svg?branch=master)](https://travis-ci.org/xerial/sqlite-jdbc) [![Join the chat at https://gitter.im/xerial/sqlite-jdbc](https://badges.gitter.im/xerial/sqlite-jdbc.svg)](https://gitter.im/xerial/sqlite-jdbc?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 ==================
+
 SQLite JDBC, developed by [Taro L. Saito](http://www.xerial.org/leo), is a library for accessing and creating [SQLite](http://sqlite.org) database files in Java.
 
 Our SQLiteJDBC library requires no configuration since native libraries for major OSs, including Windows, Mac OS X, Linux etc., are assembled into a single JAR (Java Archive) file. The usage is quite simple; [download](https://bitbucket.org/xerial/sqlite-jdbc/downloads)
@@ -29,7 +30,7 @@ is our utility to create personalized genome browsers.
 Public Discussion Forum
 =======================
 *  [Xerial Public Discussion Group](http://groups.google.com/group/xerial?hl=en)
-*  Post bug reports or feqture requests to [Issue Tracker](https://bitbucket.org/xerial/sqlite-jdbc/issues)
+*  Post bug reports or feqture requests to [Issue Tracker](https://github.com/xerial/sqlite-jdbc/issues)
 
 
 [![Maven Central](https://maven-badges.herokuapp.com/maven-central/org.xerial/sqlite-jdbc/badge.svg)](https://maven-badges.herokuapp.com/maven-central/org.xerial/sqlite-jdbc/)
@@ -145,6 +146,25 @@ sqlite-jdbc extracts a native library for your OS to the directory specified by 
 
 News
 ====
+*   2018-05-25: sqlite-jdbc-3.23.1
+    * Upgrade to SQLite 3.23.1
+    * Fixes #312, 321, #323, #328
+    * Dropped linux armv6 support temporarily
+*   2017-12-07: sqlite-jdbc-3.21.0.1
+    * Metadata query fixes
+    * Fix for Android
+*   2017-11-14: sqlite-jdbc-3.21.0
+    * Upgrade to SQLite 3.21.0
+    * Various fixes for metadata queries
+*   2017-10-08: sqlite-jdbc-3.20.1
+    * Upgrade to SQLite 3.20.1
+    * Various bug fixes
+*   2017-08-04: sqlite-jdbc-3.20.0
+    * Upgrade to SQLite [3.20.0](https://www.sqlite.org/releaselog/3_20_0.html)
+    * Support Linux aarch64
+    * Fix #239
+*   2017-06-22: sqlite-jdbc-3.19.3
+    * Upgrade to SQLite [3.19.0](https://www.sqlite.org/releaselog/3_19_3.html)
 *   2017-05-18: sqlite-jdbc-3.18.0
     * Upgrade to SQLite [3.18.0](http://sqlite.org/releaselog/3_18_0.html)
 *   2017-01-10: sqlite-jdbc-3.16.1
@@ -349,13 +369,23 @@ fragments into your pom.xml file. With those settings, your Maven will automatic
         <dependency>
           <groupId>org.xerial</groupId>
           <artifactId>sqlite-jdbc</artifactId>
-          <version>3.15.1</version>
+          <version>(version)</version>
         </dependency>
     </dependencies>
 
 To use snapshot/pre-release versions, add the following repository to your Maven settings:
 * Pre-release repository: <https://oss.sonatype.org/content/repositories/releases>
 * Snapshot repository: <https://oss.sonatype.org/content/repositories/snapshots>
+
+### Hint for maven-shade-plugin
+
+You may need to add shade plugin transformer to solve `No suitable driver found for jdbc:sqlite:` issue.
+```xml
+<transformer
+	implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
+	<resource>META-INF/services/java.sql.Driver</resource>
+</transformer>
+```
 
 Using SQLiteJDBC with Tomcat6 Web Server
 ========================================
@@ -378,6 +408,6 @@ and manually put the SQLite JDBC jar file into (TOMCAT_HOME)/lib folder.
     <dependency>
         <groupId>org.xerial</groupId>
         <artifactId>sqlite-jdbc</artifactId>
-        <version>3.15.1</version>
+        <version>(version)</version>
         <scope>provided</scope>
     </dependency>
