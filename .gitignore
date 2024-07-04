@@ -11,3 +11,5 @@ atlassian-ide-plugin.xml
 .project
 .settings/
 .DS_Store
+*.class
+.fleet/settings.json

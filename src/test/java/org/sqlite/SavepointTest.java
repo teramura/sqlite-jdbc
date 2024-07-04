@@ -1,8 +1,6 @@
 package org.sqlite;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.File;
 import java.sql.Connection;
@@ -13,33 +11,23 @@ import java.sql.SQLException;
 import java.sql.Savepoint;
 import java.sql.Statement;
 import java.util.Properties;
-
-import org.junit.After;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
- * These tests assume that Statements and PreparedStatements are working as per
- * normal and test the interactions of commit(), setSavepoint(), setSavepoint(String),
- * rollback(Savepoint), and release(Savepoint).
+ * These tests assume that Statements and PreparedStatements are working as per normal and test the
+ * interactions of commit(), setSavepoint(), setSavepoint(String), rollback(Savepoint), and
+ * release(Savepoint).
  */
-public class SavepointTest
-{
+public class SavepointTest {
     private Connection conn1, conn2;
-    private Statement  stat1, stat2;
+    private Statement stat1, stat2;
 
-    boolean            done = false;
-
-    @BeforeClass
-    public static void forName() throws Exception {
-        System.out.println("running in " + (SQLiteJDBCLoader.isNativeMode() ? "native" : "pure-java") + " mode");
-    }
-
-    @Before
-    public void connect() throws Exception {
-        File tmpFile = File.createTempFile("test-trans", ".db");
-	// tmpFile.deleteOnExit();
+    @BeforeEach
+    public void connect(@TempDir File tempDir) throws Exception {
+        File tmpFile = File.createTempFile("test-trans", ".db", tempDir);
 
         Properties prop = new Properties();
         prop.setProperty("shared_cache", "false");
@@ -51,7 +39,7 @@ public class SavepointTest
         stat2 = conn2.createStatement();
     }
 
-    @After
+    @AfterEach
     public void close() throws Exception {
         stat1.close();
         stat2.close();
@@ -67,24 +55,24 @@ public class SavepointTest
         stat1.executeUpdate("create table trans (c1);");
         conn1.setSavepoint();
 
-        assertEquals(1, stat1.executeUpdate("insert into trans values (4);"));
+        assertThat(stat1.executeUpdate("insert into trans values (4);")).isEqualTo(1);
 
-        // transaction not yet commited, conn1 can see, conn2 can not
+        // transaction not yet committed, conn1 can see, conn2 can not
         rs = stat1.executeQuery(countSql);
-        assertTrue(rs.next());
-        assertEquals(1, rs.getInt(1));
+        assertThat(rs.next()).isTrue();
+        assertThat(rs.getInt(1)).isEqualTo(1);
         rs.close();
         rs = stat2.executeQuery(countSql);
-        assertTrue(rs.next());
-        assertEquals(0, rs.getInt(1));
+        assertThat(rs.next()).isTrue();
+        assertThat(rs.getInt(1)).isEqualTo(0);
         rs.close();
 
         conn1.commit();
 
         // all connects can see data
         rs = stat2.executeQuery(countSql);
-        assertTrue(rs.next());
-        assertEquals(1, rs.getInt(1));
+        assertThat(rs.next()).isTrue();
+        assertThat(rs.getInt(1)).isEqualTo(1);
         rs.close();
     }
 
@@ -98,13 +86,13 @@ public class SavepointTest
         stat1.executeUpdate("insert into trans values (3);");
 
         rs = stat1.executeQuery(select);
-        assertTrue(rs.next());
+        assertThat(rs.next()).isTrue();
         rs.close();
 
         conn1.rollback(sp);
 
         rs = stat1.executeQuery(select);
-        assertFalse(rs.next());
+        assertThat(rs.next()).isFalse();
         rs.close();
     }
 
@@ -151,13 +139,13 @@ public class SavepointTest
 
         // conn1 can see (1+...+7), conn2 can see (1+...+5)
         rs = stat1.executeQuery("select sum(c1) from t;");
-        assertTrue(rs.next());
-        assertEquals(1 + 2 + 3 + 4 + 5 + 6 + 7, rs.getInt(1));
+        assertThat(rs.next()).isTrue();
+        assertThat(rs.getInt(1)).isEqualTo(1 + 2 + 3 + 4 + 5 + 6 + 7);
         rs.close();
 
         rs = stat2.executeQuery("select sum(c1) from t;");
-        assertTrue(rs.next());
-        assertEquals(1 + 2 + 3 + 4 + 5, rs.getInt(1));
+        assertThat(rs.next()).isTrue();
+        assertThat(rs.getInt(1)).isEqualTo(1 + 2 + 3 + 4 + 5);
         rs.close();
     }
 
@@ -169,37 +157,37 @@ public class SavepointTest
         stat1.executeUpdate("create table trans (c1);");
 
         Savepoint outerSP = conn1.setSavepoint("outer_sp");
-        assertEquals(1, stat1.executeUpdate("insert into trans values (4);"));
+        assertThat(stat1.executeUpdate("insert into trans values (4);")).isEqualTo(1);
 
         // transaction not yet commited, conn1 can see, conn2 can not
         rs = stat1.executeQuery(countSql);
-        assertTrue(rs.next());
-        assertEquals(1, rs.getInt(1));
+        assertThat(rs.next()).isTrue();
+        assertThat(rs.getInt(1)).isEqualTo(1);
         rs.close();
         rs = stat2.executeQuery(countSql);
-        assertTrue(rs.next());
-        assertEquals(0, rs.getInt(1));
+        assertThat(rs.next()).isTrue();
+        assertThat(rs.getInt(1)).isEqualTo(0);
         rs.close();
 
         Savepoint innerSP = conn1.setSavepoint("inner_sp");
-        assertEquals(1, stat1.executeUpdate("insert into trans values (5);"));
+        assertThat(stat1.executeUpdate("insert into trans values (5);")).isEqualTo(1);
 
         // transaction not yet commited, conn1 can see, conn2 can not
         rs = stat1.executeQuery(countSql);
-        assertTrue(rs.next());
-        assertEquals(2, rs.getInt(1));
+        assertThat(rs.next()).isTrue();
+        assertThat(rs.getInt(1)).isEqualTo(2);
         rs.close();
         rs = stat2.executeQuery(countSql);
-        assertTrue(rs.next());
-        assertEquals(0, rs.getInt(1));
+        assertThat(rs.next()).isTrue();
+        assertThat(rs.getInt(1)).isEqualTo(0);
         rs.close();
 
         // releasing an inner savepoint, statements are still wrapped by the outer savepoint
         conn1.releaseSavepoint(innerSP);
 
         rs = stat2.executeQuery(countSql);
-        assertTrue(rs.next());
-        assertEquals(0, rs.getInt(1));
+        assertThat(rs.next()).isTrue();
+        assertThat(rs.getInt(1)).isEqualTo(0);
         rs.close();
 
         // releasing the outer savepoint is like a commit
@@ -207,8 +195,8 @@ public class SavepointTest
 
         // all connects can see SP1 data
         rs = stat2.executeQuery(countSql);
-        assertTrue(rs.next());
-        assertEquals(2, rs.getInt(1));
+        assertThat(rs.next()).isTrue();
+        assertThat(rs.getInt(1)).isEqualTo(2);
         rs.close();
     }
 }

@@ -13,62 +13,50 @@
  *--------------------------------------------------------------------------*/
 package org.sqlite;
 
-import org.junit.Ignore;
-import org.junit.Test;
-import org.sqlite.javax.SQLiteConnectionPoolDataSource;
-
-import javax.sql.ConnectionPoolDataSource;
-import javax.sql.PooledConnection;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import javax.sql.ConnectionPoolDataSource;
+import javax.sql.PooledConnection;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
+import org.sqlite.javax.SQLiteConnectionPoolDataSource;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-
-public class SQLiteConnectionPoolDataSourceTest
-{
+public class SQLiteConnectionPoolDataSourceTest {
 
     @Test
-    public void connectionTest()
-            throws SQLException
-    {
+    public void connectionTest() throws SQLException {
         ConnectionPoolDataSource ds = new SQLiteConnectionPoolDataSource();
 
         PooledConnection pooledConn = ds.getPooledConnection();
 
         Connection handle = pooledConn.getConnection();
-        assertFalse(handle.isClosed());
-        assertTrue(handle.createStatement().execute("select 1"));
+        assertThat(handle.isClosed()).isFalse();
+        assertThat(handle.createStatement().execute("select 1")).isTrue();
 
         Connection handle2 = pooledConn.getConnection();
-        assertTrue(handle.isClosed());
-        try {
-            handle.createStatement().execute("select 1");
-            fail();
-        }
-        catch (SQLException e) {
-            assertEquals("Connection is closed", e.getMessage());
-        }
+        assertThat(handle.isClosed()).isTrue();
+        Connection finalHandle = handle;
+        assertThatThrownBy(() -> finalHandle.createStatement().execute("select 1"))
+                .isInstanceOf(SQLException.class)
+                .hasMessage("Connection is closed");
 
-        assertTrue(handle2.createStatement().execute("select 1"));
+        assertThat(handle2.createStatement().execute("select 1")).isTrue();
         handle2.close();
 
         handle = pooledConn.getConnection();
-        assertTrue(handle.createStatement().execute("select 1"));
+        assertThat(handle.createStatement().execute("select 1")).isTrue();
 
         pooledConn.close();
-        assertTrue(handle.isClosed());
+        assertThat(handle.isClosed()).isTrue();
     }
 
-    @Ignore
+    @Disabled
     @Test
-    public void proxyConnectionCloseTest()
-            throws SQLException
-    {
+    public void proxyConnectionCloseTest() throws SQLException {
         ConnectionPoolDataSource ds = new SQLiteConnectionPoolDataSource();
         PooledConnection pooledConn = ds.getPooledConnection();
         System.out.println("pooledConn: " + pooledConn.getClass());
